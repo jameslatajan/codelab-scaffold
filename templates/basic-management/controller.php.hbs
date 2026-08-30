@@ -1,0 +1,1033 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Controllers\BaseController;
+
+use Mpdf\Mpdf;
+use Mpdf\Config\ConfigVariables;
+use Mpdf\Config\FontVariables;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+
+use App\Models\LogModel;
+use App\Models\Userrole_model;
+use App\Models\Checker;
+
+class {{controllerClass}} extends BaseController
+{
+    protected $roles;
+    protected $table;
+    protected $pfield;
+    protected $sub;
+    protected $modules;
+    protected $module;
+    protected $module_path;
+    protected $controller_page;
+    protected $dbName;
+    protected $status_map;
+    protected $dir;
+
+    public function __construct()
+    {
+        $this->main                    = 'Master Files';
+        $this->module                  = 'Master Files';
+        $this->sub                     = '{{moduleName}}';
+
+        $this->data['table']           = $this->table           = PREFIX . '{{tableName}}';
+        $this->data['pfield']          = $this->pfield          = '{{primaryKey}}';
+        $this->data['controller_page'] = $this->controller_page = site_url('{{routeSlug}}');
+        $this->module_path             = 'modules/' . strtolower(str_replace(" ", "_", $this->main)) . '/' . strtolower(str_replace(" ", "_", $this->sub));
+
+        /*
+            Status map
+        */
+        $this->data['status_map']              = $this->status_map      = [
+            0 => array('text' => 'Inactive', 'color' => 'danger'),
+            1 => array('text' => 'Active', 'color' => 'success'),
+        ];
+    }
+
+    private function submenu()
+    {
+        foreach (MODULES as $mod) {
+            require("../app/Views/modules/" . str_replace(" ", "_", strtolower($mod)) . "/metadata.php");
+        }
+
+        $this->data['modules']             = $this->modules;
+        $this->data['current_main_module'] = $this->modules[$this->main]['main'];
+        $this->data['current_module']      = $this->modules[$this->main]['sub'][$this->sub];
+
+        // Roles
+        $this->check_roles();
+        $this->data['roles'] = $this->roles;
+    }
+
+    private function check_roles()
+    {
+        $userRoleModel = new Userrole_model();
+
+        $this->roles['view']   = $userRoleModel->has_access(session()->get('current_user')->userID, SYSTEM_NAME . ' View ' . $this->sub);
+        $this->roles['create'] = $userRoleModel->has_access(session()->get('current_user')->userID, SYSTEM_NAME . ' Create ' . $this->sub);
+        $this->roles['edit']   = $userRoleModel->has_access(session()->get('current_user')->userID, SYSTEM_NAME . ' Edit ' . $this->sub);
+        $this->roles['export'] = $userRoleModel->has_access(session()->get('current_user')->userID, SYSTEM_NAME . ' Export ' . $this->sub);
+    }
+
+    public function index()
+    {
+        $this->show();
+    }
+
+    private function get_conditions()
+    {
+        /*
+          *Condition fields
+         */
+        $condition_fields = array(
+            array(
+                'variable'      => '{{mainField}}',
+                'field'         => $this->table . '.{{mainField}}',
+                'default_value' => '',
+                'operator'      => 'like_after',
+                'title'         => '{{fieldLabel}}',
+                'width'         => '100',
+                'excel_width'   => '50',
+                'align'         => 'left',
+                'class'         => 'wx-100'
+            ),
+            array(
+                'variable'      => 'status',
+                'field'         => $this->table . '.status',
+                'default_value' => '',
+                'operator'      => 'where',
+                'title'         => 'Status',
+                'width'         => '50',
+                'excel_width'   => '50',
+                'align'         => 'center',
+                'class'         => 'wx-100 text-center'
+            ),
+        );
+
+        return $condition_fields;
+    }
+
+    private function build_list_data($list)
+    {
+        $data = array();
+        foreach ($list as $row) {
+            $id = $this->encrypter->encode($row->{$this->pfield});
+            $data[$id] = array(
+                array(
+                    'text' => $row->{{mainField}},
+                    'class' => '',
+                    'align' => 'left'
+                ),
+                array(
+                    'text'  => '<span class="text-white text-center rounded-pill text-uppercase bg-' . $this->status_map[$row->status]['color'] . '">' . $this->status_map[$row->status]['text'] . '</span>',
+                    'class' => 'text-center',
+                    'align' => 'center',
+                ),
+            );
+        }
+
+        return $data;
+    }
+
+    public function show()
+    {
+        $this->submenu();
+        $data = $this->data;
+
+        // condition fields
+        $condition_fields = $this->get_conditions();
+
+        // sorting fields
+        $sorting_fields = array(
+            '{{mainField}}' => 'asc',
+        );
+
+        //get the controller
+        $controller = strtolower(str_replace(' ', '_',  $this->module)) . '_' . strtolower(str_replace(' ', '_', $this->sub));
+
+        // page
+        if ($this->request->getVar('page')) {
+            $page = $this->request->getVar('page');
+        } else if ($this->session->get($controller . '_page')) {
+            $page = $this->session->get($controller . '_page');
+        } else {
+            $page = 1;
+        }
+
+        // start source of filtering
+        $filter_source = 0;  // default/blank
+        if ($this->request->getPost('filterflag') || $this->request->getPost('sortby')) {
+            $filter_source = 1;
+        } else {
+            foreach ($condition_fields as $key) {
+                if ($this->request->getPost($key['variable'])) {
+                    $filter_source = 1;  // form filters
+                    break;
+                }
+            }
+        }
+
+        if (!$filter_source) {
+            foreach ($condition_fields as $key) {
+                if ($this->session->get($controller . '_' . $key['variable']) || $this->session->get($controller . '_sortby') || $this->session->get($controller . '_sortorder')) {
+                    $filter_source = 2;  // session
+                    break;
+                }
+            }
+        }
+
+        switch ($filter_source) {
+            case 1:
+                foreach ($condition_fields as $key) {
+                    ${$key['variable']} = trim($this->request->getPost($key['variable']));
+                }
+
+                $sortby    = $this->request->getPost('sortby');
+                $sortorder = $this->request->getPost('sortorder');
+                break;
+            case 2:
+                foreach ($condition_fields as $key) {
+                    ${$key['variable']} = $this->session->get($controller . '_' . $key['variable']);
+                }
+
+                $sortby    = $this->session->get($controller . '_sortby');
+                $sortorder = $this->session->get($controller . '_sortorder');
+                break;
+            default:
+                foreach ($condition_fields as $key) {
+                    ${$key['variable']} = $key['default_value'];
+                }
+                $sortby    = "";
+                $sortorder = "";
+        }
+        //end source of filtering
+
+        if ($this->request->getPost('limit')) {
+            $limit = $this->request->getPost('limit');
+        } elseif ($this->session->get($controller . '_limit')) {
+            $limit = $this->session->get($controller . '_limit');
+        } else {
+            $limit = 25;  // default limit
+        }
+
+        // set session variables
+        foreach ($condition_fields as $key) {
+            $this->session->set($controller . '_' . $key['variable'], ${$key['variable']});
+        }
+
+        $this->session->set($controller . '_sortby', $sortby);
+        $this->session->set($controller . '_sortorder', $sortorder);
+        $this->session->set($controller . '_limit', $limit);
+        $this->session->set($controller . '_page', $page);
+
+        // assign data variables for views
+        foreach ($condition_fields as $key) {
+            $data[$key['variable']] = ${$key['variable']};
+        }
+
+        /*
+            Start Pagination
+        */
+        /* *select */
+        $b = $this->db->table($this->table);
+        $b->select($this->table . '.*');
+
+        /* *join*/
+
+        /* *where*/
+
+        // set conditions
+        foreach ($condition_fields as $key) {
+            $operators = explode('_', $key['operator']);
+            $operator  = $operators[0];
+            // check if the operator is like
+            if (count($operators) > 1) {
+                // like operator
+                if (trim(${$key['variable']}) != '' && $key['field']) {
+                    $b->$operator($key['field'], ${$key['variable']}, $operators[1]);
+                }
+            } else {
+                if (trim(${$key['variable']}) != '' && $key['field']) {
+                    $b->$operator($key['field'], ${$key['variable']});
+                }
+            }
+        }
+
+        // get
+        $data['ttl_rows'] = $ttl_rows = $b->countAllResults();
+
+        // set pagination
+        $data['pagination'] = $pagination = $this->pagination->makeLinks($page, $limit, $ttl_rows, 'custom');
+
+
+        /* *select */
+        $b = $this->db->table($this->table);
+        $b->select($this->table . '.*');
+
+        /* *join*/
+
+        /* *where*/
+
+        // set conditions
+        foreach ($condition_fields as $key) {
+            $operators = explode('_', $key['operator']);
+            $operator  = $operators[0];
+            // check if the operator is like
+            if (count($operators) > 1) {
+                // like operator
+                if (trim(${$key['variable']}) != '' && $key['field']) {
+                    $b->$operator($key['field'], ${$key['variable']}, $operators[1]);
+                }
+            } else {
+                if (trim(${$key['variable']}) != '' && $key['field']) {
+                    $b->$operator($key['field'], ${$key['variable']});
+                }
+            }
+        }
+
+        //sortby & sortorder
+        if ($sortby && $sortorder) {
+            $b->orderBy($sortby, $sortorder);
+            if (!empty($sorting_fields)) {
+                foreach ($sorting_fields as $fld => $s_order) {
+                    if ($fld != $sortby) {
+                        $b->orderBy($fld, $s_order);
+                    }
+                }
+            }
+        } else {
+            $ctr = 1;
+            if (!empty($sorting_fields)) {
+                foreach ($sorting_fields as $fld => $s_order) {
+                    if ($ctr == 1) {
+                        $sortby    = $fld;
+                        $sortorder = $s_order;
+                    }
+                    $b->orderBy($fld, $s_order);
+                    $ctr++;
+                }
+            }
+        }
+
+        // limit
+        if ($limit) {
+            $offset = ($page - 1) * $limit;
+            if ($offset) {
+                $b->limit($limit, $offset);
+            } else {
+                $b->limit($limit);
+            }
+        }
+
+        // get
+        $records = $b->get()->getResult();
+
+        // assigning variables
+        $data['sortby']    = $sortby;
+        $data['sortorder'] = $sortorder;
+        $data['limit']     = $limit;
+        $data['offset']    = $offset ?? 0;
+
+        // action bar buttons
+        $data['buttons'] = array(
+            array(
+                'class'      => 'btn btn-light btn-rounded text-primary btn-sm',
+                'tooltip'    => 'Print',
+                'icon'       => '<i class="fas fa-print"></i>',
+                'onclickUrl' => $this->controller_page . '/printlist',
+            ),
+            array(
+                'class'      => 'btn btn-light text-primary btn-rounded btn-sm',
+                'tooltip'    => 'Export',
+                'icon'       => '<i class="fas fa-file-excel"></i>',
+                'onclickUrl' => $this->controller_page . '/exportlist',
+            ),
+        );
+
+        // action bar
+        $data['action_title'] = 'List';
+
+        // generate headers
+        $data['headers'] = generate_headers($this->get_conditions());
+
+        // build format records
+        $data['records'] = $build_list = $this->build_list_data($records);
+
+        echo view('header', $data);
+        echo view($this->module_path . "/show");
+        echo view('footer');
+    }
+
+    public function create()
+    {
+        $this->submenu();
+        $data = $this->data;
+
+        if ($this->roles['create']) {
+            echo view('header', $data);
+            echo view($this->module_path . "/create");
+            echo view('footer');
+        } else {
+            $data['page_title'] = 'Unauthorized ';
+            $data['page_desc']  = 'You dont have access to this page';
+            $data['url']        = $this->controller_page;
+
+            echo view('header', $data);
+            echo view("default");
+            echo view('footer');
+        }
+    }
+
+    public function view($id)
+    {
+        $this->submenu();
+        $data = $this->data;
+
+        $id = encrypter_decrypt($id);
+
+        if ($this->roles['view']) {
+            // Signatory definitions (easy to edit!)
+            $signatoriesConfig = [];
+
+            /* Base columns */
+            $b = $this->db->table($this->table);
+            $b->select($this->table . '.' . $this->pfield);
+            $b->select($this->table . '.*');
+
+            // Dynamic signatory + date fields + joins
+            if ($signatoriesConfig) {
+                foreach ($signatoriesConfig as $s) {
+                    // signatory ID column
+                    $b->select("{$this->table}.{$s['column']}");
+                    // date column
+                    $b->select("{$this->table}.{$s['dateCol']}");
+                    // Join user table
+                    $alias = "{$s['key']}_user";
+                    $b->select("{$alias}.firstName AS {$s['key']}_firstname");
+                    $b->select("{$alias}.middleName AS {$s['key']}_middlename");
+                    $b->select("{$alias}.lastName AS {$s['key']}_lastname");
+                    $b->join("users AS {$alias}", "{$this->table}.{$s['column']} = {$alias}.userID", 'left');
+                }
+            }
+
+            $b->where($this->pfield, $id);
+            $data['rec'] = $rec = $b->get()->getRow();
+
+            $data['signatories'] = [];
+            if ($signatoriesConfig) {
+                foreach ($signatoriesConfig as $s) {
+                    $fname  = "{$s['key']}_firstname";
+                    $lname  = "{$s['key']}_lastname";
+                    $date   = $s['dateCol'];
+                    $col    = $s['column'];
+
+                    // only show if id is exist in the column
+                    $show = false;
+                    if ($rec->$col) {
+                        $show = true;
+                    }
+                    $data['signatories'][] = [
+                        'no'       => $s['no'],
+                        'show'     => $show,
+                        'label'    => $s['label'],
+                        'value'    => ($rec->$col) ? strtoupper($rec->$lname . ', ' . $rec->$fname) : '-',
+                        'subTitle' => (strtotime($rec->$date) > 1) ? date('F d, Y h:i A', strtotime($rec->$date)) : '-',
+                        'theme'    => ($rec->$col) ? $s['theme'] : '',
+                    ];
+                }
+            }
+
+            // log url
+            $data['logUrl'] = $logUrl = site_url('logs/single_record_log/' . $this->table . '/' . $this->pfield . '/' . $this->encrypter->encode($rec->{$this->pfield}) . '/' . $this->sub);
+
+            // Load views
+            echo view('header', $data);
+            echo view($this->module_path . "/view");
+            echo view('footer');
+        } else {
+            $data['page_title'] = 'Unauthorized';
+            $data['page_desc']  = 'You dont have access to this page';
+            $data['url']        = $this->controller_page;
+
+            echo view('header', $data);
+            echo view("default");
+            echo view('footer');
+        }
+    }
+
+    public function edit($id)
+    {
+        $this->submenu();
+        $data = $this->data;
+
+        $id = $this->encrypter->decode($id);
+        if ($this->roles['view']) {
+            // Signatory definitions (easy to edit!)
+            $signatoriesConfig = [];
+
+            /* Base columns */
+            $b = $this->db->table($this->table);
+            $b->select($this->table . '.' . $this->pfield);
+            $b->select($this->table . '.*');
+
+            // Dynamic signatory + date fields + joins
+            if ($signatoriesConfig) {
+                foreach ($signatoriesConfig as $s) {
+                    // signatory ID column
+                    $b->select("{$this->table}.{$s['column']}");
+                    // date column
+                    $b->select("{$this->table}.{$s['dateCol']}");
+                    // Join user table
+                    $alias = "{$s['key']}_user";
+                    $b->select("{$alias}.firstName AS {$s['key']}_firstname");
+                    $b->select("{$alias}.middleName AS {$s['key']}_middlename");
+                    $b->select("{$alias}.lastName AS {$s['key']}_lastname");
+                    $b->join("users AS {$alias}", "{$this->table}.{$s['column']} = {$alias}.userID", 'left');
+                }
+            }
+
+            $b->where($this->pfield, $id);
+            $data['rec'] = $rec = $b->get()->getRow();
+
+            $data['signatories'] = [];
+            if ($signatoriesConfig) {
+                foreach ($signatoriesConfig as $s) {
+                    $fname  = "{$s['key']}_firstname";
+                    $lname  = "{$s['key']}_lastname";
+                    $date   = $s['dateCol'];
+                    $col    = $s['column'];
+
+                    $show = false;
+                    if ($rec->$col) {
+                        $show = true;
+                    }
+                    $data['signatories'][] = [
+                        'no'       => $s['no'],
+                        'show'     => $show,
+                        'label'    => $s['label'],
+                        'value'    => ($rec->$col) ? strtoupper($rec->$lname . ', ' . $rec->$fname) : '-',
+                        'subTitle' => (strtotime($rec->$date) > 1) ? date('F d, Y h:i A', strtotime($rec->$date)) : '-',
+                        'theme'    => ($rec->$col) ? $s['theme'] : '',
+                    ];
+                }
+            }
+
+            // log url
+            $data['logUrl'] = $logUrl = site_url('logs/single_record_log/' . $this->table . '/' . $this->pfield . '/' . $this->encrypter->encode($rec->{$this->pfield}) . '/' . $this->sub);
+
+
+            // Load views
+            echo view('header', $data);
+            echo view($this->module_path . "/edit");
+            echo view('footer');
+        } else {
+            $data['page_title'] = 'Unauthorized';
+            $data['page_desc']  = 'You dont have access to this page';
+            $data['url']        = $this->controller_page;
+
+            echo view('header', $data);
+            echo view("default");
+            echo view('footer');
+        }
+    }
+
+    public function save()
+    {
+        $this->submenu();
+
+        /*
+        initialize
+        */
+        $logModel = new LogModel();
+        $checker = new Checker();
+
+        if ($this->roles['create']) {
+            $table_fields = array(
+                '{{mainField}}',
+            );
+
+            $fields = array();
+            foreach ($table_fields as $fld) {
+                $fields[$fld] = trim($this->request->getPost($fld));
+            }
+
+            // check duplicate
+            if ($checker->check_duplicate('{{mainField}}', $fields['{{mainField}}'], $this->table)) {
+                $res['status']  = $status = 409;
+                $res['title']   = 'Saving data';
+                $res['message'] = 'Duplicate record found';
+                $res['data']    = array();
+
+                return $this->response->setStatusCode($status)->setJSON($res);
+            }
+
+            $fields['status'] = 1;
+
+            $b = $this->db->table($this->table);
+            if ($b->insert($fields)) {
+                $id = $this->db->insertID();
+
+                $logs = "Record - " . $this->sub;
+                $logModel->table_logs($this->sub, $this->table, $this->pfield,  $id, 'Insert', $logs);
+            }
+
+            $encID = $this->encrypter->encode($id);
+
+            $res['status']      = $status = 200;
+            $res['title']       = 'Saved';
+            $res['message']     = 'Data save successfully';
+            $res['data']['url'] = $this->controller_page . '/view/' . $encID;
+
+            return $this->response->setStatusCode($status)->setJSON($res);
+        } else {
+            $res['status']  = $status = 409;
+            $res['title']   = 'Saving data';
+            $res['message'] = 'You dont have access to this action';
+            $res['data']    = array();
+
+            return $this->response->setStatusCode($status)->setJSON($res);
+        }
+    }
+
+    public function update()
+    {
+        $this->submenu();
+
+        /*
+        initialize
+        */
+        $logModel = new LogModel();
+        $checker = new Checker();
+
+        if ($this->roles['edit']) {
+            $id     = $this->encrypter->decode($this->request->getPost($this->pfield));
+            $action = 'Update';
+
+            $table_fields = array(
+                '{{mainField}}',
+                'status',
+            );
+
+            $fields = array();
+            foreach ($table_fields as $fld) {
+                $fields[$fld] = trim($this->request->getPost($fld));
+            }
+
+            // check duplicate
+            if ($checker->check_duplicate_edit('{{mainField}}', $fields['{{mainField}}'], $this->table, $this->pfield, $id)) {
+                $res['status']  = $status = 409;
+                $res['title']   = 'Saving data';
+                $res['message'] = 'Duplicate record found';
+                $res['data']    = array();
+
+                return $this->response->setStatusCode($status)->setJSON($res);
+            }
+
+            // log field changes first
+            $wasChange = $logModel->field_logs($this->sub, $this->table, $this->pfield, $id, 'Update', $fields);
+
+            $b = $this->db->table($this->table);
+            $b->set($fields);
+            $b->where($this->pfield, $id);
+            if ($b->update()) {
+                if ($wasChange) {
+                    $logs = 'Record - ' . $this->sub . ' ' . $action;
+                    $logModel->table_logs($this->sub, $this->table, $this->pfield, $id, 'Update', $logs);
+                }
+            }
+
+            $encID = $this->encrypter->encode($id);
+
+            $res['status']      = $status = 200;
+            $res['title']       = 'Saved';
+            $res['message']     = 'Data ' . $action . '  successfully';
+            $res['data']['url'] = $this->controller_page . '/view/' . $encID;
+
+            return $this->response->setStatusCode($status)->setJSON($res);
+        } else {
+            $res['status']  = $status = 409;
+            $res['title']   = 'Saving data';
+            $res['message'] = 'You dont have access to this action';
+            $res['data']    = array();
+
+            return $this->response->setStatusCode($status)->setJSON($res);
+        }
+    }
+
+    public function printlist()
+    {
+        $this->submenu();
+        $data = $this->data;
+
+        if ($this->roles['export']) {
+            $condition_fields = $this->get_conditions();
+
+            // sorting fields
+            $sorting_fields = array(
+                '{{mainField}}' => 'asc',
+            );
+
+            //get the controller
+            $controller = strtolower(str_replace(' ', '_',  $this->module)) . '_' . strtolower(str_replace(' ', '_', $this->sub));
+
+            //session get all the variables
+            foreach ($condition_fields as $key) {
+                ${$key['variable']} = $this->session->get($controller . '_' . $key['variable']);
+            }
+
+
+            //sessions
+            $limit     = $this->session->get($controller . '_limit');
+            $sortby    = $this->session->get($controller . '_sortby');
+            $sortorder = $this->session->get($controller . '_sortorder');
+            $page      = $this->session->get($controller . '_page');
+
+            /* *select */
+            $b = $this->db->table($this->table);
+            $b->select($this->table . '.*');
+
+            /* *join*/
+
+            /* *where*/
+
+            // set conditions
+            foreach ($condition_fields as $key) {
+                $operators = explode('_', $key['operator']);
+                $operator  = $operators[0];
+                // check if the operator is like
+                if (count($operators) > 1) {
+                    // like operator
+                    if (trim(${$key['variable']}) != '' && $key['field']) {
+                        $b->$operator($key['field'], ${$key['variable']}, $operators[1]);
+                    }
+                } else {
+                    if (trim(${$key['variable']}) != '' && $key['field']) {
+                        $b->$operator($key['field'], ${$key['variable']});
+                    }
+                }
+            }
+
+            //sortby & sortorder
+            if ($sortby && $sortorder) {
+                $b->orderBy($sortby, $sortorder);
+                if (!empty($sorting_fields)) {
+                    foreach ($sorting_fields as $fld => $s_order) {
+                        if ($fld != $sortby) {
+                            $b->orderBy($fld, $s_order);
+                        }
+                    }
+                }
+            } else {
+                $ctr = 1;
+                if (!empty($sorting_fields)) {
+                    foreach ($sorting_fields as $fld => $s_order) {
+                        if ($ctr == 1) {
+                            $sortby    = $fld;
+                            $sortorder = $s_order;
+                        }
+                        $b->orderBy($fld, $s_order);
+                        $ctr++;
+                    }
+                }
+            }
+
+            // limit
+            if ($limit) {
+                $offset = ($page - 1) * $limit;
+                if ($offset) {
+                    $b->limit($limit,  $offset);
+                } else {
+                    $b->limit($limit);
+                }
+            }
+
+
+            // assigning variables
+            $data['sortby']    = $sortby;
+            $data['sortorder'] = $sortorder;
+            $data['limit']     = $limit;
+            $data['offset']    = $offset ?? 0;
+
+            //get
+            $records = $b->get()->getResult();
+
+            // generate headers
+            $data['headers'] = generate_headers($this->get_conditions());
+
+            // build format records
+            $data['records'] = $build_list = $this->build_list_data($records);
+
+            // title
+            $title         = $this->sub . ' List ';
+            $data['title'] = strtoupper($title);
+
+            $html  = '';
+            $html .= view('printlist_header', $data);
+            $html .= view($this->module_path . '/printlist');
+            $html .= view('printlist_footer');
+
+            $defaultConfig = (new ConfigVariables())->getDefaults();  //get fonts
+            $fontDirs      = $defaultConfig['fontDir'];
+
+            $defaultFontConfig = (new FontVariables())->getDefaults();
+            $fontData          = $defaultFontConfig['fontdata'];
+
+            $mpdf = new Mpdf([
+                'mode'                       => 'utf-8',
+                'format'                     => 'A4',
+                'margin_left'                => 10,
+                'margin_right'               => 10,
+                'margin_top'                 => 35,
+                'margin_bottom'              => 30,
+                'pdf_version'                => 1.7,
+                'default_font_size'          => 12,
+                'orientation'                => 'P',
+                'default_font'               => 'arial',
+                'curlAllowUnsafeSslRequests' => true,
+            ]);
+
+            $mpdf->showImageErrors = true;
+            $mpdf->debug           = true;
+
+            // File exists
+            $fileUrl =  base_url('assets/images/print/print_header_landscape.png');
+
+            // single col header
+            $mpdf->SetHTMLHeader('
+            <div style="text-align:center;">
+                 <img style="width:700px;" src="' . $fileUrl . '?" alt="">
+            </div>
+            ');
+
+            $mpdf->SetHTMLFooter('
+            <div style="border-top:1px solid #000; font-size:10px; padding-top:4px;">
+            <table width="100%" style="border:none; border-collapse:collapse;">
+                <tr>
+                    <td align="left" style="border:none;">Date Printed: ' . date('M d, Y h:i A') . '</td>
+                    <td align="right" style="border:none;">Page {PAGENO} of {nb}</td>
+                </tr>
+            </table>
+            </div>
+            ');
+
+            $mpdf->WriteHTML($html);
+            $mpdf->Output();
+            die;
+        } else {
+            $data['page_title'] = 'Unauthorized ';
+            $data['page_desc']  = 'You dont have access to this page';
+            $data['url']        = $this->controller_page;
+
+            echo view('unauthorize', $data);
+        }
+    }
+
+    public function exportlist()
+    {
+        // load submenu
+        $this->submenu();
+        $data = $this->data;
+
+        if ($this->roles['export']) {
+            // condition fields
+            $condition_fields = $this->get_conditions();
+
+            // sorting fields
+            $sorting_fields = array(
+                '{{mainField}}' => 'asc',
+            );
+
+            //get the controller
+            $controller = strtolower(str_replace(' ', '_',  $this->module)) . '_' . strtolower(str_replace(' ', '_', $this->sub));
+
+            //session get all the variables
+            foreach ($condition_fields as $key) {
+                ${$key['variable']} = $this->session->get($controller . '_' . $key['variable']);
+            }
+
+            //sessions
+            $limit     = $this->session->get($controller . '_limit');
+            $offset    = $this->session->get($controller . '_offset');
+            $sortby    = $this->session->get($controller . '_sortby');
+            $sortorder = $this->session->get($controller . '_sortorder');
+            $page      = $this->session->get($controller . '_page');
+
+            /* *select */
+            $b = $this->db->table($this->table);
+            $b->select($this->table . '.*');
+
+            /* *join*/
+
+            /* *where*/
+
+            // set conditions here
+            foreach ($condition_fields as $key) {
+                $operators = explode('_', $key['operator']);
+                $operator  = $operators[0];
+                // check if the operator is like
+                if (count($operators) > 1) {
+                    // like operator
+                    if (trim(${$key['variable']}) != '' && $key['field']) {
+                        $b->$operator($key['field'], ${$key['variable']}, $operators[1]);
+                    }
+                } else {
+                    if (trim(${$key['variable']}) != '' && $key['field']) {
+                        $b->$operator($key['field'], ${$key['variable']});
+                    }
+                }
+            }
+            //end set conditions
+            if ($sortby && $sortorder) {
+                $b->orderBy($sortby, $sortorder);
+                if (!empty($sorting_fields)) {
+                    foreach ($sorting_fields as $fld => $s_order) {
+                        if ($fld != $sortby) {
+                            $b->orderBy($fld, $s_order);
+                        }
+                    }
+                }
+            } else {
+                $ctr = 1;
+                if (!empty($sorting_fields)) {
+                    foreach ($sorting_fields as $fld => $s_order) {
+                        if ($ctr == 1) {
+                            $sortby    = $fld;
+                            $sortorder = $s_order;
+                        }
+                        $b->orderBy($fld, $s_order);
+                        $ctr++;
+                    }
+                }
+            }
+
+            // limit
+            if ($limit) {
+                $offset = ($page - 1) * $limit;
+                if ($offset) {
+                    $b->limit($limit, $offset);
+                } else {
+                    $b->limit($limit);
+                }
+            }
+
+            $records = $b->get()->getResult();
+
+            // assigning variables
+            $data['sortby']    = $sortby;
+            $data['sortorder'] = $sortorder;
+            $data['limit']     = $limit;
+            $data['offset']    = $offset ?? 0;
+
+            // get headers dynamically
+            $data['headers'] = $headers = generate_headers($this->get_conditions());
+
+            // build format records
+            $build_list = $this->build_list_data($records);
+
+            // title
+            $title         = $this->sub . ' List ';
+            $data['title'] = strtoupper($title);
+
+            // clean object first
+            ob_end_clean();
+
+            // start spreadsheet
+            $spreadsheet = new Spreadsheet();
+            $sheet       = $spreadsheet->getActiveSheet();
+
+            // border style
+            $borderStyle = [
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color'       => ['rgb' => '000000'],
+                    ],
+                ],
+            ];
+
+            // merge header cells for banner
+            for ($i = 1; $i <= 7; $i++) {
+                $sheet->mergeCells('A' . $i . ':' . chr(64 + count($headers)) . $i);
+            }
+
+            // company name & info
+            $sheet->setCellValue('A2', $data['company_name'] ?? 'Company Name');
+            $sheet->getStyle('A2')->getFont()->setSize(15)->setBold(true);
+            $sheet->getStyle('A2')->getAlignment()->setHorizontal('center');
+
+            $sheet->setCellValue('A3', $data['company_address'] ?? 'Company Address');
+            $sheet->getStyle('A3')->getFont()->setSize(12);
+            $sheet->getStyle('A3')->getAlignment()->setHorizontal('center');
+
+            $sheet->setCellValue('A4', $data['contact_number'] ?? 'Tel No. 000-0000');
+            $sheet->getStyle('A4')->getFont()->setSize(12);
+            $sheet->getStyle('A4')->getAlignment()->setHorizontal('center');
+
+            // document title
+            $sheet->setCellValue('A6', $data['title']);
+            $sheet->getStyle('A6')->getFont()->setSize(12)->setBold(true);
+            $sheet->getStyle('A6')->getAlignment()->setHorizontal('center');
+
+            // ===== Dynamic headers =====
+            $row = 8;
+            $colIndex = 0;
+            foreach ($headers as $header) {
+                $col = chr(ord('A') + $colIndex);
+                $sheet->setCellValue($col . $row, $header['column_header']);
+                $sheet->getStyle($col . $row)->getFont()->setBold(true);
+                $sheet->getStyle($col . $row)->getAlignment()->setHorizontal($header['align'] ?? 'left');
+                $sheet->getStyle($col . $row)->applyFromArray($borderStyle);
+
+                // set column width if exists
+                if (!empty($header['width']) && is_numeric($header['excel_width'])) {
+                    $sheet->getColumnDimension($col)->setWidth($header['excel_width']);
+                }
+
+                $colIndex++;
+            }
+
+            // ===== Populate rows dynamically =====
+            $row++;
+            foreach ($build_list as $id => $rec) {
+                $colIndex = 0;
+                foreach ($rec as $field) {
+                    $col = chr(ord('A') + $colIndex);
+                    $sheet->setCellValue($col . $row, strip_tags($field['text']));
+                    $sheet->getStyle($col . $row)->getAlignment()->setHorizontal($field['align'] ?? 'left');
+                    $sheet->getStyle($col . $row)->applyFromArray($borderStyle);
+                    $colIndex++;
+                }
+                $row++;
+            }
+
+            // worksheet title
+            $sheet->setTitle($data['title']);
+
+            // writer
+            $writer = new Xlsx($spreadsheet);
+
+            // filename
+            $filename = strtolower(str_replace(' ', '_', $this->sub . ' List ') . date('His'));
+
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="' . $filename . '.xlsx"');
+            header('Cache-Control: max-age=0');
+
+            ob_end_clean();
+
+            $writer->save('php://output');
+            exit();
+        } else {
+            $data['page_title'] = 'Unauthorized ';
+            $data['page_desc']  = 'You dont have access to this page';
+            $data['url']        = $this->controller_page;
+
+            echo view('unauthorize', $data);
+        }
+    }
+}

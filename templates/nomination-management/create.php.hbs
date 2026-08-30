@@ -1,0 +1,498 @@
+<style>
+    .select2-selection.select2-selection--multiple {
+        min-height: 60px;
+    }
+</style>
+
+<div class="page-content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <div class="page-title-box d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 text-uppercase"><i class="<?php echo $current_module['icon'] ?>"></i> <?php echo $current_module['sub_level1'] ?></h5>
+                    <div class="page-title-right"></div>
+                </div>
+            </div>
+        </div>
+
+        <form id="frmEntry" enctype="multipart/form-data">
+            <!-- Card: Document Info -->
+            <div class="col-12">
+                <div class="card mb-2">
+                    <div class="card-header d-flex py-2 px-1 justify-content-between" id="tooltip-container">
+                        <h5 class="mb-0 text-uppercase">Create</h5>
+                        <small class="mb-0"><span class="text-danger">*</span> Indicates Required</small>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-bordered table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="wx-100 bg-light text-end">Activity <small class="text-danger">*</small></td>
+                                    <td>
+                                        <select class="form-select form-select-sm select2 wx-300" name="activityID" id="activityID" required title="Activity">
+                                            <option value="">&nbsp</option>
+                                            <?php if (!empty($activities)) { ?>
+                                                <?php foreach ($activities as $act) { ?>
+                                                    <option value="<?php echo $encrypter->encode($act->actID); ?>"><?php echo $act->activity; ?></option>
+                                                <?php } ?>
+                                            <?php } ?>
+                                        </select>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="bg-light text-end">Category <small class="text-danger">*</small></td>
+                                    <td>
+                                        <select class="form-select form-select-sm select2 wx-300" name="nominationType" id="nominationType" required title="Nomination Category">
+                                            <option value="">&nbsp</option>
+                                            <?php foreach ($nomination_type_map as $key => $value) { ?>
+                                                <option value="<?php echo $key; ?>"><?php echo $value['text']; ?></option>
+                                            <?php } ?>
+                                        </select>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="bg-light text-end">Participants <small class="text-danger">*</small></td>
+                                    <td>
+                                        <select class="form-select form-select-sm select2 wx-300" name="participantType" id="participantType" required>
+                                            <option value="">&nbsp</option>
+                                            <?php foreach ($participation_map as $key => $value) { ?>
+                                                <option value="<?php echo $key; ?>" <?php if ($key == 4) echo 'selected'; ?>><?php echo $value['text']; ?></option>
+                                            <?php } ?>
+                                        </select>
+                                        <br>
+                                        <br>
+                                        <select class="form-select form-select-sm select2-empTypes wx-300" multiple name="employeeTypes[]" id="employeeTypes">
+                                            <option value="">&nbsp</option>
+                                            <?php foreach ($empTypes as $empType) { ?>
+                                                <option value="<?php echo $empType->employeeTypeID; ?>" selected><?php echo $empType->employeeType; ?></option>
+                                            <?php } ?>
+                                        </select>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="participant-div"></div>
+                    </div>
+                    <div class="card-footer d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-rounded btn-sm" id="cmdSave">
+                            <i class="fa fa-save"></i> Save
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-rounded btn-sm" id="cmdCancel">
+                            <i class="fa fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- JS Functions -->
+<script>
+    // Initialize date picker
+    flatpickr('.flatpickr-basic', {
+        dateFormat: 'm/d/Y'
+    });
+
+    $(document).on('change', '#secID', function() {
+        const secID = $(this).val();
+        $('#sectionEmployeesBody').html('');
+        if (!secID) return;
+        $.ajax({
+            type: "GET",
+            url: "<?php echo $controller_page . '/get_section_employees' ?>",
+            data: {
+                secID
+            },
+            dataType: "json",
+            success: function(res) {
+                if (res.status !== 200) {
+                    Swal.fire(res.title, res.message, "warning");
+                    return;
+                }
+                if (!res.data || res.data.length === 0) {
+                    $('#sectionEmployeesBody').html('<tr><td colspan="3" class="text-center text-muted">No data found</td></tr>');
+                    return;
+                }
+                const rows = res.data.map(e => {
+                    const isChecked = selections.employees.has(e.id) ? 'checked' : '';
+                    return `<tr>
+                        <td><input type="checkbox" class="form-check-input check-item" name="employees[]" value="${e.id}" ${isChecked} style="width: 20px; height: 20px;"></td>
+                        <td data-idno="${e.idNo}">${e.idNo}</td>
+                        <td data-fullname="${e.fullName}">${e.fullName}</td>
+                    </tr>`;
+                });
+
+                $('#sectionEmployeesBody').html(rows.join(''));
+            },
+            error: function(xhr) {
+                if (xhr.responseJSON) {
+                    Swal.fire(xhr.responseJSON.title, xhr.responseJSON.message, "error");
+                } else {
+                    Swal.fire("Error", xhr.status + ": " + xhr.statusText, "error");
+                }
+            }
+        });
+    });
+
+    $('#cmdEmpSearch').on('click', function() {
+        const q = $('#empSearch').val().trim();
+        if (!q) {
+            Swal.fire("Search Employees", "Please type an ID No or name.", "warning");
+            return;
+        }
+        const types = $('#employeeTypes').val() || [];
+        $.ajax({
+            type: "GET",
+            url: "<?php echo $controller_page . '/search_employees' ?>",
+            data: {
+                value: q,
+                employeeTypes: types
+            },
+            dataType: "json",
+            success: function(res) {
+                if (res.status !== 200) {
+                    Swal.fire(res.title, res.message, "warning");
+                    return;
+                }
+                const rows = res.data.records.map(e => {
+                    return `<tr>
+                        <td><input type="checkbox" class="form-check-input check-item" value="${e.id}" style="width: 20px; height: 20px;"></td>
+                        <td data-idno="${e.text.split(' - ')[0]}">${e.text.split(' - ')[0]}</td>
+                        <td data-fullname="${e.text.split(' - ')[1]}">${e.text.split(' - ')[1]}</td>
+                    </tr>`;
+                });
+                $('#empSearchBody').html(rows.join(''));
+            },
+            error: function(xhr) {
+                if (xhr.responseJSON) {
+                    Swal.fire(xhr.responseJSON.title, xhr.responseJSON.message, "error");
+                } else {
+                    Swal.fire("Error", xhr.status + ": " + xhr.statusText, "error");
+                }
+            }
+        });
+    });
+
+    $('#participantType').on('change', function() {
+        const type = $(this).val();
+        loadParticipantDiv(type);
+        clearSelections();
+    });
+
+    function loadParticipantDiv(type) {
+        if (type == 1) {
+            $('.participant-div').html(`<?php echo $this->include('modules/trainings/nominations/multiple_div'); ?>`);
+            $('#employeeTypes').removeClass('d-none').next('.select2-container').show();
+            $('.select2-empTypes').select2();
+        } else if (type == 2) {
+            $('.participant-div').html(`<?php echo $this->include('modules/trainings/nominations/multiple_sec'); ?>`);
+            $('#employeeTypes').removeClass('d-none').next('.select2-container').show();
+            $('.select2-empTypes').select2();
+        } else if (type == 3) {
+            $('.participant-div').html(`<?php echo $this->include('modules/trainings/nominations/section_emp'); ?>`);
+            $('.select2-section').select2();
+            $('#employeeTypes').addClass('d-none').next('.select2-container').hide();
+        } else if (type == 4) {
+            $('.participant-div').html(`<?php echo $this->include('modules/trainings/nominations/individual_emp'); ?>`);
+            initIndividualSearch();
+            $('#employeeTypes').addClass('d-none').next('.select2-container').hide();
+        }
+        bindSelectionHandlers();
+    }
+
+    function initIndividualSearch() {
+        $('#empID').select2({
+            placeholder: 'Press Enter to search',
+            minimumInputLength: 1,
+            language: {
+                inputTooShort: function() {
+                    return "Press Enter to search";
+                },
+                searching: function() {
+                    return "Searching...";
+                },
+                noResults: function() {
+                    return "No results found";
+                }
+            },
+            ajax: {
+                url: "<?php echo $controller_page . '/search_employees' ?>",
+                type: 'GET',
+                dataType: 'json',
+                delay: 250,
+                data: function(params) {
+                    return {
+                        value: params.term
+                    };
+                },
+                processResults: function(data) {
+                    return {
+                        results: data.data.records
+                    };
+                },
+                cache: true
+            },
+        }).on('select2:open', function() {
+            let searchBox = $('.select2-search__field');
+            searchBox.off();
+            $('.select2-results__options').html(
+                '<li class="select2-results__option" role="treeitem" aria-disabled="true">Press Enter to search</li>'
+            );
+            searchBox.on('keypress', function(e) {
+                if (e.keyCode === 13) {
+                    e.preventDefault();
+                    let term = $(this).val();
+                    let select2Control = $('#empID').data('select2');
+                    $('.select2-results__options').empty();
+                    select2Control.trigger('query', {
+                        term: term
+                    });
+                }
+            });
+        });
+    }
+
+    const selections = {
+        divisions: new Map(),
+        sections: new Map(),
+        employees: new Map()
+    };
+
+    function clearSelections() {
+        selections.divisions.clear();
+        selections.sections.clear();
+        selections.employees.clear();
+        $('#selectedList').empty();
+        // remove hidden inputs
+        $('#frmEntry input[name="divisions[]"]').remove();
+        $('#frmEntry input[name="sections[]"]').remove();
+        $('#frmEntry input[name="employees[]"]').remove();
+    }
+
+    function addHidden(type, id) {
+        const name = type === 'divisions' ? 'divisions[]' : type === 'sections' ? 'sections[]' : 'employees[]';
+        $('#frmEntry').append(`<input type="hidden" name="${name}" value="${id}">`);
+    }
+
+    function removeHidden(type, id) {
+        const name = type === 'divisions' ? 'divisions[]' : type === 'sections' ? 'sections[]' : 'employees[]';
+        $(`#frmEntry input[name="${name}"][value="${id}"]`).remove();
+    }
+
+    function bindSelectionHandlers() {
+        // Select all toggler
+        $('.participant-div').off('change', '.check-all').on('change', '.check-all', function() {
+            const checked = $(this).is(':checked');
+            const $table = $(this).closest('table');
+            $table.find('.check-item').prop('checked', checked).trigger('change');
+        });
+
+        // Add button (Individual Employee)
+        $('.participant-div').off('click', '#btnAdd').on('click', '#btnAdd', function() {
+            addEmployee();
+        });
+
+        // Item toggle
+        $('.participant-div').off('change', '.check-item').on('change', '.check-item', function() {
+            const $row = $(this).closest('tr');
+            const id = $(this).val();
+            const type = $('#participantType').val();
+            let label = '';
+            if (type == '1') {
+                // Division: Abbr + Name
+                label = $row.find('td').eq(1).text().trim() + ' - ' + $row.find('td').eq(2).text().trim();
+                if ($(this).is(':checked')) {
+                    selections.divisions.set(id, label);
+                    addHidden('divisions', id);
+                } else {
+                    selections.divisions.delete(id);
+                    removeHidden('divisions', id);
+                }
+            } else if (type == '2') {
+                // Section: Abbr + Name
+                label = $row.find('td').eq(1).text().trim() + ' - ' + $row.find('td').eq(2).text().trim();
+                if ($(this).is(':checked')) {
+                    selections.sections.set(id, label);
+                    addHidden('sections', id);
+                } else {
+                    selections.sections.delete(id);
+                    removeHidden('sections', id);
+                }
+            } else if (type == '3' || type == '4') {
+                // Employees: idNo + name if present
+                const idNo = $row.find('[data-idno]').data('idno') || $row.find('td').eq(1).text().trim();
+                const name = $row.find('[data-fullname]').data('fullname') || $row.find('td').eq(2).text().trim();
+                label = idNo + ' - ' + name;
+                if ($(this).is(':checked')) {
+                    selections.employees.set(id, label);
+                    addHidden('employees', id);
+                } else {
+                    selections.employees.delete(id);
+                    removeHidden('employees', id);
+                }
+            }
+            renderSelected();
+        });
+
+        // Remove from selected list
+        $('#selectedList').off('click', '.remove-tag').on('click', '.remove-tag', function() {
+            const id = $(this).data('id');
+            const type = $(this).data('type');
+            if (type === 'divisions') {
+                selections.divisions.delete(id);
+            } else if (type === 'sections') {
+                selections.sections.delete(id);
+            } else {
+                selections.employees.delete(id);
+            }
+            removeHidden(type, id);
+            // Uncheck the corresponding checkbox if visible
+            $('.participant-div .check-item').each(function() {
+                if ($(this).val() === id) $(this).prop('checked', false);
+            });
+            renderSelected();
+        });
+    }
+
+    // Initialize with default selection on load
+    $(function() {
+        const initial = $('#participantType').val();
+        loadParticipantDiv(initial);
+    });
+
+    // ==========================
+    // ✅ Form Validation & Save
+    // ==========================
+    function check_fields(frm) {
+        let valid = true;
+        let missing = "";
+
+        $(frm + ' [required]').each(function() {
+            if ($(this).val() === '') {
+                missing += "<br/>" + $(this).attr('title');
+                valid = false;
+            }
+        });
+
+        if (!valid) {
+            Swal.fire("Required Fields", missing, "warning");
+        }
+
+        return valid;
+    }
+
+
+    function addEmployee() {
+        const data = $('#empID').select2('data');
+        if (!data || data.length === 0) {
+            Swal.fire("Add Employee", "Please select an employee first.", "warning");
+            return;
+        }
+        const emp = data[0]; // {id, text}
+
+        // Check if already in table
+        if ($(`#empSearchBody input[value="${emp.id}"]`).length > 0) {
+            Swal.fire("Add Employee", "Employee already added.", "warning");
+            return;
+        }
+
+        // Parse text: "ID - Name"
+        // If text format is "ID - Name", we split.
+        const parts = emp.text.split(' - ');
+        const idNo = parts[0] || '';
+        const name = parts.slice(1).join(' - ') || emp.text;
+
+        const row = `<tr>
+            <td class="text-center"><button type="button" class="btn btn-sm btn-danger remove-emp rounded-pill"><i class="fa fa-trash"></i></button></td>
+            <td>
+                <input type="hidden" name="employees[]" value="${emp.id}">
+                ${idNo}
+            </td>
+            <td>${name}</td>
+        </tr>`;
+
+        // If table has the "empty" rows (colspan), clear them
+        if ($('#empSearchBody tr td[colspan]').length > 0) {
+            $('#empSearchBody').empty();
+        }
+
+        $('#empSearchBody').append(row);
+
+        // Clear selection
+        $('#empID').val('');
+        initIndividualSearch();
+    }
+
+    // Remove employee from individual list
+    $(document).on('click', '.remove-emp', function() {
+        $(this).closest('tr').remove();
+    });
+
+
+    // ==========================
+    // 💾 Save Button Handler
+    // ==========================
+    $('#cmdSave').on('click', function() {
+        if (!check_fields('#frmEntry')) return;
+
+        const $btn = $(this);
+        const btnText = $btn.html();
+        const formData = new FormData($('#frmEntry')[0]);
+
+        Swal.fire({
+            title: 'Are you sure?',
+            text: 'You are going to save this data. Do you wish to proceed?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: "#4D62C5",
+            cancelButtonColor: "#636678",
+            processData: false,
+            contentType: false,
+            confirmButtonText: "Yes"
+        }).then(result => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "POST",
+                    url: "<?php echo $controller_page . '/save' ?>",
+                    data: formData,
+                    dataType: "json",
+                    processData: false,
+                    contentType: false,
+                    beforeSend: function() {
+                        $btn.html(`<div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                      </div>`);
+                    },
+                    success: function(response) {
+                        Swal.fire({
+                            title: response.title,
+                            text: response.message,
+                            icon: 'success',
+                            confirmButtonText: "Ok"
+                        }).then(() => {
+                            window.location.replace(response.data.url);
+                        });
+                    },
+                    error: function(xhr) {
+                        if (xhr.responseJSON) {
+                            Swal.fire(xhr.responseJSON.title, xhr.responseJSON.message, "error");
+                        } else {
+                            Swal.fire("Error", xhr.status + ": " + xhr.statusText, "error");
+                        }
+                    },
+                    complete: function() {
+                        $btn.html(btnText);
+                    }
+                });
+            }
+        });
+    });
+
+    // ==========================
+    // ❌ Cancel Button
+    // ==========================
+    $('#cmdCancel').on('click', function() {
+        cancel_confirmation('<?php echo $controller_page ?>');
+    });
+</script>

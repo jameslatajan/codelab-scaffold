@@ -1,0 +1,68 @@
+<div class="page-content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-12">
+                <div class="page-title-box d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 text-uppercase"><i class="<?php echo $current_module['icon'] ?>"></i> <?php echo $current_module['sub_level1'] ?> </h5>
+                    <div class="page-title-right">
+                        <ol class="breadcrumb m-0">
+                            <li class="me-1">
+                                <a href="<?php echo $controller_page ?>" class="btn btn-secondary btn-rounded waves-effect btn-sm"><i class="fas fa-arrow-left"></i> Back to List</a>
+                            </li>
+                            <li class="">
+                                <a href="<?php echo $controller_page . '/create' ?>" type="submit" class="btn btn-primary btn-rounded btn-sm waves-effect waves-light btn-sm" id="filter"><i class="fa fa-plus"></i> Add <?php echo $current_module['sub_level1'] ?> </a>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <form id="frmEntry">
+                    <input type="hidden" name="<?php echo $pfield ?>" value="<?php echo $encrypter->encode($rec->{$pfield}) ?>">
+                </form>
+                <!-- Main Document Table -->
+                <div class="card mb-2">
+                    <div class="card-header d-flex align-items-center justify-content-between p-1" id="tooltip-container">
+                        <small class="mb-0 fw-bold text-uppercase">View
+                            <span class="text-white text-uppercase rounded-pill bg-<?php echo $status_map[$rec->status]['color'] ?>"><?php echo $status_map[$rec->status]['text'] ?>
+                        </small>
+                        <div class="buttons">
+                            <a href="<?php echo $controller_page . '/edit/' . $encrypter->encode($rec->{$pfield}) ?>"
+                                type="submit" class="btn btn-light btn-rounded btn-sm" id="filter">
+                                <i class="fa fa-edit"></i>
+                            </a>
+                            <button
+                                type="button"
+                                id="recordlog"
+                                class="btn btn-light text-primary btn-rounded btn-sm"
+                                data-bs-container="#tooltip-container"
+                                data-bs-toggle="tooltip"
+                                data-bs-placement="top"
+                                aria-label="Logs"
+                                data-bs-original-title="Logs"
+                                onclick="popUp('<?php echo $logUrl ?>', 1000, 1000)">
+                                <i class="fas fa-server"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0 align-middle">
+                            <tr>
+                                <td class="text-end bg-light wx-100">Cloudattachments :</td>
+                                <td class="wx-300 fw-bold" colspan="2">
+                                    <?php echo $rec->cloud attachments ?>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <?php if ($signatories) { ?>
+                        <h6 class="font-size-14"><i class="fa fa-users"></i> Users</h6>
+                        <?php echo $this->include('components/transaction_status'); ?>
+                    <?php } ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

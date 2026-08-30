@@ -1,0 +1,15 @@
+{
+  "name": "plop",
+  "private": true,
+  "scripts": {
+    "generate": "plop --plopfile plopfile.js",
+    "plop": "plop --plopfile plopfile.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "plop": "^4.0.5",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
+  }
+}
