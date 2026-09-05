@@ -6,35 +6,40 @@ This repository is `codelab-scaffold`, a Plop-based scaffolder intended to serve
 every codelab project regardless of stack. The generators that exist today all
 target PHP / CodeIgniter 4; that is the current state, not the intended scope.
 
-`plopfile.js` loads the TypeScript implementation in `plopfile.ts`, which defines
-prompts, normalization rules, and output actions. Handlebars templates are grouped
-by generator in `templates/basic-management/`, `templates/nomination-management/`,
-and `templates/module/`. Generator output is written to `output/`, which is
-git-ignored — treat anything there as a disposable artifact.
+`plopfile.js` loads `plopfile.ts`, which is an entry point only: it calls
+`registerGenerators` and contains no generator logic. Generator output is written
+to `output/`, which is git-ignored — treat anything there as disposable.
 
-### Intended layout
-
-`plopfile.ts` is currently a single ~700-line file holding every generator's
-types, helpers, prompts, and actions. New stacks should not be added to it. The
-target layout, which `tsconfig.json` already anticipates via
-`"include": ["plopfile.ts", "generators/**/*.ts"]`:
+### Layout
 
 ```
-plopfile.ts          # discover and register generators
-src/core/            # stack-agnostic helpers only
-generators/<stack>/  # one module per generator, exporting { description, prompts, actions }
-templates/<stack>/   # matching .hbs templates
+plopfile.ts            # entry point; registers generators
+src/core/              # stack-agnostic: paths, strings, fs, registry
+generators/<stack>/    # one module per generator
+templates/             # matching .hbs templates
 ```
 
-Stack-agnostic means: casing, validation, `replaceLiteral`, file-copy helpers.
+Each generator module default-exports `{ name, description, prompts, actions }`
+with a stack-namespaced `name` (`php:crud`, `php:nomination`, `sample:module`).
+`src/core/registry.ts` walks `generators/` and registers what it finds, so adding
+a stack means adding a folder — never editing shared code. Files named
+`types.ts`, `paths.ts`, `normalize.ts`, or `index.ts` within a stack folder are
+treated as shared helpers and skipped by discovery.
+
+Stack-agnostic means casing, validation, `replaceLiteral`, and file-copy helpers.
 Anything that knows about controllers, route slugs, upload directories, or
-CodeIgniter's `metadata.php` belongs under `generators/php-ci4/`, not in shared
-scope. Note that `APP_ROOT_DIR` (`plopfile.ts:33`) currently resolves to this
-repository's parent directory and assumes a sibling CodeIgniter app — that
-coupling must be removed before the repo can be used from anywhere else.
+CodeIgniter's `metadata.php` belongs in `generators/php-ci4/`. Generators must
+resolve paths from `REPO_ROOT` (`src/core/paths.ts`), never their own
+`__dirname`, so a module can be moved without changing where it reads templates
+from or writes output to.
 
-Generator names should be namespaced by stack (`php:crud`, `react:component`)
-once more than one stack exists.
+### Known limitation
+
+`APP_ROOT_DIR` (`generators/php-ci4/paths.ts`) still defaults to this
+repository's parent directory, assuming a sibling CodeIgniter app. When that app
+is absent, the metadata-patch action of both PHP generators fails while every
+other file still generates. `CI4_APP_ROOT` overrides it. A per-run destination
+prompt is the real fix and is not yet implemented.
 
 ## Build, Test, and Development Commands
 
@@ -42,9 +47,9 @@ Install dependencies once with `npm install`.
 
 - `npm run typecheck` runs `tsc --noEmit` against `plopfile.ts` and any files
   under `generators/`.
-- `npm run generate -- module` starts the sample module generator.
-- `npm run generate -- "basic management"` starts the CRUD generator.
-- `npm run generate -- "nomination management"` starts the trainings workflow
+- `npm run generate -- sample:module` starts the sample module generator.
+- `npm run generate -- php:crud` starts the CRUD generator.
+- `npm run generate -- php:nomination` starts the trainings workflow
   generator.
 
 Use the generated files in `output/` to inspect template changes before copying
@@ -59,9 +64,8 @@ lowercase and hyphenated (for example, `nomination-management`). Template files
 use `.hbs`; preserve target-language formatting and keep placeholders such as
 `{{routeSlug}}` consistent across related files.
 
-Generator inputs are normalized centrally in `plopfile.ts`, not in templates. Keep
-it that way — when normalization moves into `generators/<stack>/`, it stays
-centralized per stack.
+Generator inputs are normalized in the stack's `normalize.ts`, not in templates.
+Keep normalization centralized per stack.
 
 ## Templating an existing working module
 
@@ -84,9 +88,10 @@ There is no test framework configured. Run `npm run typecheck` for every
 TypeScript change, then run the affected generator and inspect its output. Note in
 the pull request which generators you smoke-tested.
 
-Once generators are split into separate modules, each should get a snapshot test:
-generate into a temp directory and diff against a committed fixture. This is what
-makes a multi-stack scaffolder safe to refactor.
+Generators are now separate modules, so each should get a snapshot test:
+generate into a temp directory and diff against a committed fixture. Not yet
+implemented — this is the next structural piece, and it is what makes a
+multi-stack scaffolder safe to refactor.
 
 ## Commit & Pull Request Guidelines
 

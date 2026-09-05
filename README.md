@@ -21,18 +21,18 @@ npm install
 
 ## Available generators
 
-### `module`
+### `sample:module`
 
 ```bash
-npm run generate -- module
+npm run generate -- sample:module
 ```
 
 Writes a sample TypeScript module to `output/`.
 
-### `basic management` (PHP / CodeIgniter 4)
+### `php:crud` (PHP / CodeIgniter 4)
 
 ```bash
-npm run generate -- "basic management"
+npm run generate -- php:crud
 ```
 
 Scaffolds a full `Master Files` CRUD module:
@@ -45,10 +45,10 @@ Scaffolds a full `Master Files` CRUD module:
 Prompt values: `moduleName`, `routeSlug`, `tableName`, `primaryKey`, `mainField`,
 `iconClass`
 
-### `nomination management` (PHP / CodeIgniter 4)
+### `php:nomination` (PHP / CodeIgniter 4)
 
 ```bash
-npm run generate -- "nomination management"
+npm run generate -- php:nomination
 ```
 
 Scaffolds a trainings workflow module:
@@ -82,9 +82,30 @@ source files are copied byte-for-byte with no tokens, and `plopfile.ts` swaps th
 hardcoded identifiers at generate time via `replaceLiteral`. Lower risk when
 templatizing an existing, working module.
 
+## Layout
+
+```
+plopfile.ts            # entry point; registers generators, holds no logic
+src/core/              # stack-agnostic: paths, strings, fs, registry
+generators/<stack>/    # one module per generator
+templates/             # matching .hbs templates
+```
+
 ## Adding a stack
 
-Current generators are PHP-specific and defined in `plopfile.ts`. Before adding a
-second stack, the PHP-only helpers and paths should move out of the shared scope
-into a per-stack generator folder — `tsconfig.json` already includes
-`generators/**/*.ts` for this. See `AGENTS.md` for the intended layout.
+1. Create `generators/<stack>/<name>.ts` default-exporting
+   `{ name, description, prompts, actions }` with a namespaced `name`
+   (`react:component`).
+2. Add templates under `templates/<stack>/`.
+3. Nothing else — `src/core/registry.ts` discovers and registers it.
+
+Files named `types.ts`, `paths.ts`, `normalize.ts`, and `index.ts` inside a stack
+folder are treated as shared helpers and are not registered as generators.
+
+## Known limitation
+
+The metadata-patch action of both PHP generators reads
+`app/Views/modules/*/metadata.php` from `APP_ROOT_DIR`, which defaults to this
+repository's parent directory. When that sibling CodeIgniter app is absent the
+action fails while all other files still generate. Set `CI4_APP_ROOT` to point at
+a real CI4 application, or ignore the failure if you only need the module files.
