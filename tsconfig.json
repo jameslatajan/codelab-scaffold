@@ -9,5 +9,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["plopfile.ts", "generators/**/*.ts"]
+  "include": ["plopfile.ts", "src/**/*.ts", "generators/**/*.ts", "tests/**/*.ts"]
 }
