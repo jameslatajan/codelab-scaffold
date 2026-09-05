@@ -11,7 +11,12 @@ intended to host generators for any stack — see [Adding a stack](#adding-a-sta
 
 - `npm run generate` — run a generator interactively
 - `npm run plop` — same, direct Plop invocation
+- `npm run check` — typecheck + lint + format check + tests (run before committing)
 - `npm run typecheck` — `tsc --noEmit`
+- `npm run lint` / `npm run lint:fix` — ESLint
+- `npm run format` / `npm run format:check` — Prettier
+- `npm test` — generator snapshot tests
+- `npm run test:update` — re-record snapshots after an intentional template change
 
 ## First-time install
 

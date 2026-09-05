@@ -45,8 +45,14 @@ prompt is the real fix and is not yet implemented.
 
 Install dependencies once with `npm install`.
 
-- `npm run typecheck` runs `tsc --noEmit` against `plopfile.ts` and any files
-  under `generators/`.
+- `npm run check` runs the full gate: typecheck, lint, format check, tests. Run
+  this before every commit.
+- `npm run typecheck` runs `tsc --noEmit`.
+- `npm run lint` / `npm run lint:fix` run ESLint.
+- `npm run format` / `npm run format:check` run Prettier.
+- `npm test` runs the generator snapshot tests.
+- `npm run test:update` rewrites the committed snapshots from actual output —
+  review the resulting diff before committing it.
 - `npm run generate -- sample:module` starts the sample module generator.
 - `npm run generate -- php:crud` starts the CRUD generator.
 - `npm run generate -- php:nomination` starts the trainings workflow
@@ -79,19 +85,38 @@ Two supported patterns:
   templatizing a module that already works, since the source cannot be broken by
   a malformed token.
 
-Verification for either: run the generator with the *original* module's values and
+Verification for either: run the generator with the _original_ module's values and
 confirm the output reproduces the source files exactly.
 
 ## Testing Guidelines
 
-There is no test framework configured. Run `npm run typecheck` for every
-TypeScript change, then run the affected generator and inspect its output. Note in
-the pull request which generators you smoke-tested.
+`tests/snapshot.test.ts` runs every generator with a fixed answer set and asserts
+the generated tree matches a committed fixture byte-for-byte. Cases live in
+`tests/cases.ts`; fixtures in `tests/fixtures/expected/<slug>/`.
 
-Generators are now separate modules, so each should get a snapshot test:
-generate into a temp directory and diff against a committed fixture. Not yet
-implemented — this is the next structural piece, and it is what makes a
-multi-stack scaffolder safe to refactor.
+Adding a generator means adding a case to `tests/cases.ts` and running
+`npm run test:update` to record its fixtures. Changing a template means running
+the same command and reading the diff — an unexpected diff is the test doing its
+job.
+
+`tests/fixtures/ci4-app/` is a minimal CodeIgniter metadata fixture; tests point
+`CI4_APP_ROOT` at it so the metadata-patch actions are covered rather than
+skipped. Its `START SUB MENU` marker uses four trailing asterisks because that is
+what the patch regex requires — note that the generators _emit_ five, so a block
+they write cannot be re-matched by their own regex. That inconsistency is
+untouched pending a decision about which form the real application uses.
+
+Generators write through `REPO_ROOT`-relative paths rather than a per-run
+destination, so tests generate into `output/` and clear it before and after. Set
+`KEEP_OUTPUT=1` to inspect what a run produced.
+
+## Coding Standards
+
+ESLint (flat config, `eslint.config.mjs`) and Prettier (`.prettierrc.json`)
+enforce style; Prettier is authoritative for formatting and ESLint's stylistic
+rules are disabled via `eslint-config-prettier`. `templates/`, `output/`, and
+`tests/fixtures/` are excluded from both — template files must keep their
+target-language formatting exactly, and fixtures must stay byte-exact.
 
 ## Commit & Pull Request Guidelines
 

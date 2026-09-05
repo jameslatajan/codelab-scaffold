@@ -4,12 +4,24 @@
   "scripts": {
     "generate": "plop --plopfile plopfile.js",
     "plop": "plop --plopfile plopfile.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:update": "node --import tsx --test tests/**/*.test.ts",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.13",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
     "plop": "^4.0.5",
+    "prettier": "^3.9.6",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.69.0"
   }
 }

@@ -15,7 +15,9 @@ import {
   normalizeRouteSlug
 } from './normalize';
 
-const buildTemplateData = (answers: BasicManagementAnswers): BasicManagementTemplateData => {
+const buildTemplateData = (
+  answers: BasicManagementAnswers
+): BasicManagementTemplateData => {
   const moduleName = normalizeModuleName(answers.moduleName);
   const routeSlug = normalizeRouteSlug(answers.routeSlug);
   const tableName = normalizeRouteSlug(answers.tableName);
@@ -35,8 +37,10 @@ const buildTemplateData = (answers: BasicManagementAnswers): BasicManagementTemp
   };
 };
 
-const buildMetadataSubmoduleLine = (data: BasicManagementTemplateData, eol: string): string =>
-  `$subModules['${data.routeSlug}'] = '${data.moduleName}';${eol}`;
+const buildMetadataSubmoduleLine = (
+  data: BasicManagementTemplateData,
+  eol: string
+): string => `$subModules['${data.routeSlug}'] = '${data.moduleName}';${eol}`;
 
 const buildMetadataBlock = (data: BasicManagementTemplateData, eol: string): string =>
   [
@@ -90,9 +94,12 @@ const patchMasterFilesMetadata = (answers?: Record<string, any>): string => {
   const submoduleLine = buildMetadataSubmoduleLine(data, eol);
   const metadataBlock = buildMetadataBlock(data, eol);
 
-  const submoduleMarker = /(\$subModules\[[^\n]+\]\s*=\s*'[^']+';\r?\n)(\r?\n\/\* \*\*\*\*START SUB MENU\*\*\*\* \*\/)/;
+  const submoduleMarker =
+    /(\$subModules\[[^\n]+\]\s*=\s*'[^']+';\r?\n)(\r?\n\/\* \*\*\*\*START SUB MENU\*\*\*\* \*\/)/;
   if (!submoduleMarker.test(metadataContents)) {
-    throw new Error('Unable to find the submodule list insertion point in master_files metadata.');
+    throw new Error(
+      'Unable to find the submodule list insertion point in master_files metadata.'
+    );
   }
 
   const withSubmoduleLine = metadataContents.replace(
@@ -172,8 +179,8 @@ const buildBasicManagementActions = (answers?: Record<string, any>) => {
 
 const generator: GeneratorDefinition = {
   name: 'php:crud',
-description: 'Scaffold a Master Files CRUD module based on the Skills reference',
-prompts: [
+  description: 'Scaffold a Master Files CRUD module based on the Skills reference',
+  prompts: [
     {
       type: 'input',
       name: 'moduleName',

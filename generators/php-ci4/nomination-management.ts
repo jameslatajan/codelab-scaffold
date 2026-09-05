@@ -8,13 +8,9 @@ import type {
   NominationManagementAnswers,
   NominationManagementTemplateData
 } from './types';
-import {
-  TRAININGS_METADATA_OUTPUT_PATH,
-  TRAININGS_METADATA_SOURCE_PATH
-} from './paths';
+import { TRAININGS_METADATA_OUTPUT_PATH, TRAININGS_METADATA_SOURCE_PATH } from './paths';
 import {
   buildControllerClass,
-  buildFieldLabel,
   normalizeControllerClass,
   normalizeIdentifier,
   normalizeModuleName,
@@ -117,7 +113,9 @@ const patchTrainingsMetadata = (answers?: Record<string, any>): string => {
   const submoduleMarker =
     /(\$subModules\[[^\n]+\]\s*=\s*'[^']+';\r?\n)(\r?\n\/\* \*\*\*\*START SUB MENU\*\*\*\* \*\/)/;
   if (!submoduleMarker.test(metadataContents)) {
-    throw new Error('Unable to find the submodule list insertion point in trainings metadata.');
+    throw new Error(
+      'Unable to find the submodule list insertion point in trainings metadata.'
+    );
   }
 
   const withSubmoduleLine = metadataContents.replace(
@@ -149,7 +147,7 @@ const transformNominationTemplate = (
 
   updatedContents = replaceLiteral(
     updatedContents,
-    "modules/trainings/nominations/",
+    'modules/trainings/nominations/',
     `modules/trainings/${data.routeSlug}/`
   );
 
@@ -174,11 +172,7 @@ const transformNominationTemplate = (
       "PREFIX . 'nominations'",
       `PREFIX . '${data.tableName}'`
     );
-    updatedContents = replaceLiteral(
-      updatedContents,
-      "'nomID'",
-      `'${data.primaryKey}'`
-    );
+    updatedContents = replaceLiteral(updatedContents, "'nomID'", `'${data.primaryKey}'`);
     updatedContents = replaceLiteral(
       updatedContents,
       "site_url('nominations')",
@@ -315,8 +309,8 @@ const buildNominationManagementActions = (answers?: Record<string, any>) => {
 
 const generator: GeneratorDefinition = {
   name: 'php:nomination',
-description: 'Scaffold a Trainings workflow module based on the Nominations reference',
-prompts: [
+  description: 'Scaffold a Trainings workflow module based on the Nominations reference',
+  prompts: [
     {
       type: 'input',
       name: 'moduleName',
