@@ -118,10 +118,54 @@ rules are disabled via `eslint-config-prettier`. `templates/`, `output/`, and
 `tests/fixtures/` are excluded from both — template files must keep their
 target-language formatting exactly, and fixtures must stay byte-exact.
 
+## Pre-Commit Requirements
+
+Run `npm run check` before every commit. It is the full gate — typecheck, lint,
+format check, and snapshot tests — and it must pass. Do not commit with a failing
+or skipped check.
+
+The coding standard (`## Coding Standards`) and the testing standard
+(`## Testing Guidelines`) are both part of this gate:
+
+- **Coding standard** — ESLint and Prettier must be clean. Run `npm run lint:fix`
+  and `npm run format` to resolve mechanical issues; fix real lint errors rather
+  than silencing them. Never add a blanket rule disable to get a commit through.
+- **Testing standard** — snapshot tests must pass. If a template change alters
+  generated output, run `npm run test:update`, read the resulting fixture diff,
+  and confirm every change is intended before staging it. An unreviewed snapshot
+  update defeats the test.
+
+If a change adds a generator, it must ship with its case in `tests/cases.ts` and
+its recorded fixtures in the same commit.
+
 ## Commit & Pull Request Guidelines
 
-Use concise imperative subjects with Conventional Commit prefixes such as
-`feat: add nomination template`. Keep each commit focused.
+### Allowed types
+
+- `feat:` — a new feature.
+- `fix:` — a bug fix.
+- `chore:` — refactors and improvements.
+- `doc:` — documentation.
+
+### Rules
+
+- Use exactly one type per commit. If a change needs two types, split the commit.
+- Use lowercase for the type. Do not invent new types.
+- Keep the subject line short and specific, and do not end it with a period.
+- Add further detail in the body, separated from the subject by a blank line.
+- Never include secrets, credentials, or decrypted identifiers in a commit
+  message.
+
+### Examples
+
+```
+feat: add kiosk queue ticket printing
+fix: reject malformed encrypted clinic id
+chore: extract shared ticket lookup into QueTicketModel
+doc: document db_changes.sql workflow
+```
+
+### Pull requests
 
 Pull requests should name the affected generator and templates, show a
 representative generated path (for example, `output/app/Controllers/Example.php`),
