@@ -131,3 +131,6 @@ nb-configuration.xml
 
 # Local Pi runtime state
 .atl/
+
+# Plop generator output (regenerate with npm run generate)
+/output/

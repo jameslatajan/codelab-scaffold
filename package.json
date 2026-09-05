@@ -1,5 +1,5 @@
 {
-  "name": "plop",
+  "name": "codelab-scaffold",
   "private": true,
   "scripts": {
     "generate": "plop --plopfile plopfile.js",
